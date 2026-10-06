@@ -1,0 +1,21 @@
+open_door:
+  name: 开门
+  description: 远程打开门禁。不指定设备时对所有已配置的门禁生效。
+  fields:
+    entry_id:
+      name: 设备
+      description: 只对指定设备开门。留空则对所有设备开门。
+      required: false
+      example: 01J8Z6Q0XK3W9V2M4N5P6R7S8T
+      selector:
+        text:
+    door:
+      name: 门号
+      description: 门号，默认取该设备配置里的门号。
+      required: false
+      example: 1
+      selector:
+        number:
+          min: 1
+          max: 4
+          mode: box

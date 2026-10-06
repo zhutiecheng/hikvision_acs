@@ -1,0 +1,108 @@
+blueprint:
+  name: 海康门禁 · 有人按门铃自动把画面推到中控屏
+  description: >
+    门铃响起时，把指定开关打开一段时间，并可选地推送一条带抓拍图的通知。
+    配合仪表盘上的「条件卡片」（该开关为开时显示摄像头）即可实现访客画面自动弹出。
+
+    之所以用「开关 + 延时」而不是直接弹窗：这样不需要额外安装任何前端插件，
+    任何 HA 仪表盘（平板、大屏、手机）都能用。
+  domain: automation
+  source_url: https://github.com/hikvision-acs/hikvision_acs/blob/main/blueprints/automation/hikvision_acs/doorbell_popup.yaml
+  input:
+    doorbell_event:
+      name: 门禁事件实体
+      description: 选「门禁事件」这个实体（event 类型）。
+      selector:
+        entity:
+          filter:
+            - integration: hikvision_acs
+              domain: event
+    screen_flag:
+      name: 中控屏显示开关
+      description: >
+        门铃响起时打开这个开关。在仪表盘上用「条件卡片」判断它为开时显示摄像头画面。
+        建议先创建一个「辅助元素 → 开关」，命名为"访客呼叫"。
+      selector:
+        entity:
+          filter:
+            - domain: switch
+            - domain: input_boolean
+    camera:
+      name: 门口摄像头
+      description: 选「门口画面」这个摄像头实体（可选，用于通知里附图）。
+      default: []
+      selector:
+        entity:
+          filter:
+            - integration: hikvision_acs
+              domain: camera
+    duration:
+      name: 画面停留时间
+      description: 多少秒后自动关闭画面。
+      default: 30
+      selector:
+        number:
+          min: 5
+          max: 300
+          unit_of_measurement: 秒
+          mode: slider
+    notify_service:
+      name: 通知服务（可选）
+      description: 例如 notify.mobile_app_xxx。留空则不发送通知。
+      default: ""
+      selector:
+        text:
+    message:
+      name: 通知内容
+      default: "有人按门铃"
+      selector:
+        text:
+
+mode: restart
+max_exceeded: silent
+
+trigger:
+  - platform: state
+    entity_id: !input doorbell_event
+    to: "doorbell"
+
+variables:
+  screen_flag: !input screen_flag
+  duration: !input duration
+  notify_service: !input notify_service
+  message: !input message
+  camera: !input camera
+
+action:
+  - service: homeassistant.turn_on
+    target:
+      entity_id: !input screen_flag
+
+  - if:
+      - condition: template
+        value_template: "{{ notify_service not in ['', none] }}"
+    then:
+      - choose:
+          - conditions:
+              - condition: template
+                value_template: "{{ camera not in ['', none, [], 'none'] }}"
+            sequence:
+              - service: "{{ notify_service }}"
+                data:
+                  title: 门禁
+                  message: "{{ message }}"
+                  data:
+                    image: "/api/camera_proxy/{{ camera }}"
+                    clickAction: "/lovelace"
+        default:
+          - service: "{{ notify_service }}"
+            data:
+              title: 门禁
+              message: "{{ message }}"
+
+  - delay:
+      seconds: "{{ duration | int(30) }}"
+
+  - service: homeassistant.turn_off
+    target:
+      entity_id: !input screen_flag

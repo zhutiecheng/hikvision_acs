@@ -1,0 +1,7 @@
+{
+  "name": "海康威视门禁",
+  "render_readme": true,
+  "homeassistant": "2024.8.0",
+  "zip_release": false,
+  "hide_default_branch": false
+}

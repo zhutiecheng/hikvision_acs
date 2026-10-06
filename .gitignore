@@ -1,0 +1,40 @@
+# 凭据与运行时数据 —— 绝不提交
+.env
+deploy/.env
+standalone/deploy/.env
+data/
+*.db
+*.sqlite
+*.sqlite3
+
+# 抓拍图与采样数据
+*.jpg
+*.jpeg
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+.eggs/
+build/
+dist/
+.venv/
+venv/
+env/
+
+# 测试与缓存
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.coverage
+htmlcov/
+
+# 编辑器 / 操作系统
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.swp
+*.swo
+*~

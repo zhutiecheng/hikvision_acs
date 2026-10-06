@@ -1,0 +1,17 @@
+# go2rtc 只管转流，拉流地址由网关在启动时通过 API 注册
+# （这样设备密码只存在于网关的环境变量里，不落到配置文件）
+log:
+  level: info
+
+api:
+  listen: "0.0.0.0:1984"
+
+rtsp:
+  listen: "0.0.0.0:8554"
+
+webrtc:
+  listen: "0.0.0.0:8555"
+  # 一般不需要写死 candidates，go2rtc 会自动探测本机地址。
+  # 只在多网卡 / Docker 桥接导致 WebRTC 连不上时，才取消注释并填对外的那个地址：
+  # candidates:
+  #   - <本机对外IP>:8555

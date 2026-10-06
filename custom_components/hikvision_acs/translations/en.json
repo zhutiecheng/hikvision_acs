@@ -1,0 +1,119 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Add Hikvision Access Control",
+        "description": "Enter the network details of the access control terminal. The default account is admin; the password is the one set when the device was activated.",
+        "data": {
+          "host": "Device IP address",
+          "username": "Username",
+          "password": "Password",
+          "door": "Door number",
+          "rtsp_channel": "Video stream",
+          "use_http_listening": "Enable real-time event push (recommended)"
+        },
+        "data_description": {
+          "rtsp_channel": "The sub-stream starts faster and suits doorbell previews; the main stream is sharper",
+          "use_http_listening": "Let the device push events to Home Assistant. When disabled, only polling is used and events may be delayed by one poll interval"
+        }
+      },
+      "reauth_confirm": {
+        "title": "Reauthenticate",
+        "description": "The device rejected the current credentials. Enter the password again.",
+        "data": {
+          "password": "Password"
+        }
+      }
+    },
+    "error": {
+      "cannot_connect": "Cannot reach the device. Check the IP address and network.",
+      "invalid_auth": "Authentication failed. Check the username and password.",
+      "not_access_controller": "This device is not an access control terminal.",
+      "unknown": "Unexpected error. See the logs for details."
+    },
+    "abort": {
+      "already_configured": "This device is already configured.",
+      "reauth_successful": "Reauthentication successful."
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Hikvision Access Control options",
+        "data": {
+          "scan_interval": "Poll interval (seconds)",
+          "door": "Door number",
+          "rtsp_channel": "Video stream",
+          "use_http_listening": "Enable real-time event push"
+        },
+        "data_description": {
+          "scan_interval": "Fallback polling, used to fill gaps missed by push"
+        }
+      }
+    }
+  },
+  "entity": {
+    "event": {
+      "access_event": {
+        "name": "Access event",
+        "state": {
+          "doorbell": "Doorbell",
+          "access_granted": "Access granted",
+          "access_denied": "Access denied",
+          "door_opened": "Door unlocked",
+          "door_closed": "Door locked",
+          "exit_button": "Exit button",
+          "remote_open": "Remote open"
+        }
+      }
+    },
+    "binary_sensor": {
+      "online": {
+        "name": "Online"
+      },
+      "door_lock": {
+        "name": "Door lock"
+      }
+    },
+    "button": {
+      "open_door": {
+        "name": "Open door"
+      }
+    },
+    "sensor": {
+      "last_person": {
+        "name": "Last person"
+      },
+      "last_method": {
+        "name": "Last unlock method"
+      },
+      "last_event": {
+        "name": "Last event"
+      },
+      "today_opens": {
+        "name": "Opens today"
+      }
+    },
+    "camera": {
+      "camera": {
+        "name": "Door camera"
+      }
+    }
+  },
+  "services": {
+    "open_door": {
+      "name": "Open door",
+      "description": "Remotely open the door. Applies to every configured device when no device is given.",
+      "fields": {
+        "entry_id": {
+          "name": "Device",
+          "description": "Open only this device. Leave empty to open every device."
+        },
+        "door": {
+          "name": "Door number",
+          "description": "Door number; defaults to the one configured for the device."
+        }
+      }
+    }
+  }
+}

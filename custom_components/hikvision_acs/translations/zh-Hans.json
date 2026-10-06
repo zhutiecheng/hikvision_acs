@@ -1,0 +1,119 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "添加海康威视门禁",
+        "description": "填写门禁一体机的网络信息。默认账号为 admin，密码是设备激活时设置的。",
+        "data": {
+          "host": "设备 IP 地址",
+          "username": "用户名",
+          "password": "密码",
+          "door": "门号",
+          "rtsp_channel": "视频码流",
+          "use_http_listening": "启用实时事件推送（推荐）"
+        },
+        "data_description": {
+          "rtsp_channel": "子码流起流更快，适合门铃预览；主码流更清晰",
+          "use_http_listening": "让设备主动把事件推给 Home Assistant。关闭后仅靠轮询，事件最多延迟一个轮询周期"
+        }
+      },
+      "reauth_confirm": {
+        "title": "重新认证",
+        "description": "设备拒绝了当前的用户名或密码，请重新输入密码。",
+        "data": {
+          "password": "密码"
+        }
+      }
+    },
+    "error": {
+      "cannot_connect": "无法连接到设备，请检查 IP 地址和网络。",
+      "invalid_auth": "认证失败，请检查用户名和密码。",
+      "not_access_controller": "该设备不是门禁一体机。",
+      "unknown": "发生未知错误，详见日志。"
+    },
+    "abort": {
+      "already_configured": "该设备已经添加过了。",
+      "reauth_successful": "重新认证成功。"
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "海康威视门禁选项",
+        "data": {
+          "scan_interval": "轮询间隔（秒）",
+          "door": "门号",
+          "rtsp_channel": "视频码流",
+          "use_http_listening": "启用实时事件推送"
+        },
+        "data_description": {
+          "scan_interval": "这是兜底轮询，用于补齐推送漏掉的事件"
+        }
+      }
+    }
+  },
+  "entity": {
+    "event": {
+      "access_event": {
+        "name": "门禁事件",
+        "state": {
+          "doorbell": "门铃",
+          "access_granted": "认证通过",
+          "access_denied": "认证失败",
+          "door_opened": "门锁打开",
+          "door_closed": "门锁关闭",
+          "exit_button": "开门按钮",
+          "remote_open": "远程开门"
+        }
+      }
+    },
+    "binary_sensor": {
+      "online": {
+        "name": "在线"
+      },
+      "door_lock": {
+        "name": "门锁"
+      }
+    },
+    "button": {
+      "open_door": {
+        "name": "开门"
+      }
+    },
+    "sensor": {
+      "last_person": {
+        "name": "最后开门人"
+      },
+      "last_method": {
+        "name": "最后开门方式"
+      },
+      "last_event": {
+        "name": "最后事件"
+      },
+      "today_opens": {
+        "name": "今日开门次数"
+      }
+    },
+    "camera": {
+      "camera": {
+        "name": "门口画面"
+      }
+    }
+  },
+  "services": {
+    "open_door": {
+      "name": "开门",
+      "description": "远程打开门禁。不指定设备时对所有已配置的门禁生效。",
+      "fields": {
+        "entry_id": {
+          "name": "设备",
+          "description": "只对指定设备开门。留空则对所有设备开门。"
+        },
+        "door": {
+          "name": "门号",
+          "description": "门号，默认取该设备配置里的门号。"
+        }
+      }
+    }
+  }
+}

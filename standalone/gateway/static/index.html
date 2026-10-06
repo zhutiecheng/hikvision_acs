@@ -1,0 +1,468 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>门禁中控屏</title>
+<style>
+  :root {
+    --bg: #0e1116;
+    --panel: #161b22;
+    --panel2: #1c232c;
+    --line: #2a323d;
+    --fg: #e6edf3;
+    --dim: #8b949e;
+    --ok: #3fb950;
+    --warn: #d29922;
+    --bad: #f85149;
+    --accent: #388bfd;
+    --doorbell: #db6d28;
+  }
+  * { box-sizing: border-box; }
+  html, body { height: 100%; margin: 0; }
+  body {
+    background: var(--bg); color: var(--fg);
+    font: 15px/1.5 system-ui, -apple-system, "PingFang SC", "Microsoft YaHei", sans-serif;
+    overflow: hidden;
+  }
+  .app { display: flex; flex-direction: column; height: 100%; }
+
+  header {
+    display: flex; align-items: center; gap: 16px;
+    padding: 12px 20px; background: var(--panel);
+    border-bottom: 1px solid var(--line); flex: 0 0 auto;
+  }
+  header h1 { font-size: 17px; margin: 0; font-weight: 600; }
+  .pill {
+    display: inline-flex; align-items: center; gap: 6px;
+    font-size: 12px; color: var(--dim);
+    background: var(--panel2); border: 1px solid var(--line);
+    padding: 3px 10px; border-radius: 999px;
+  }
+  .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--dim); }
+  .dot.on { background: var(--ok); box-shadow: 0 0 6px var(--ok); }
+  .dot.off { background: var(--bad); }
+  .spacer { flex: 1; }
+
+  button {
+    font: inherit; cursor: pointer; border-radius: 8px;
+    border: 1px solid var(--line); background: var(--panel2); color: var(--fg);
+    padding: 8px 16px; transition: .15s;
+  }
+  button:hover { background: #232c37; }
+  button:active { transform: translateY(1px); }
+  button.primary { background: var(--accent); border-color: var(--accent); color: #fff; font-weight: 600; }
+  button.primary:hover { background: #4c9aff; }
+  button.primary:disabled { opacity: .5; cursor: not-allowed; }
+  button.ghost { background: transparent; }
+
+  main { flex: 1; display: flex; min-height: 0; }
+
+  /* ---------- 视频区 ---------- */
+  .video-pane {
+    flex: 0 0 0; width: 0; overflow: hidden;
+    background: #000; border-right: 1px solid var(--line);
+    position: relative; transition: flex-basis .25s ease, width .25s ease;
+  }
+  .video-pane.show { flex: 0 0 58%; width: 58%; }
+  .video-pane iframe { width: 100%; height: 100%; border: 0; display: block; }
+  .video-pane .placeholder {
+    position: absolute; inset: 0; display: flex; flex-direction: column;
+    align-items: center; justify-content: center; gap: 12px;
+    color: var(--dim); text-align: center; padding: 20px;
+  }
+  .video-head {
+    position: absolute; top: 0; left: 0; right: 0; z-index: 2;
+    display: flex; align-items: center; gap: 12px;
+    padding: 10px 14px;
+    background: linear-gradient(180deg, rgba(0,0,0,.75), transparent);
+  }
+  .video-head .title { font-weight: 600; }
+  .video-head .count {
+    font-variant-numeric: tabular-nums; color: var(--doorbell);
+    font-weight: 700; font-size: 16px;
+  }
+  .video-head button { padding: 4px 10px; font-size: 13px; }
+
+  /* ---------- 事件区 ---------- */
+  .events-pane { flex: 1; display: flex; flex-direction: column; min-width: 0; }
+  .events-head {
+    padding: 10px 20px; border-bottom: 1px solid var(--line);
+    display: flex; align-items: center; gap: 12px;
+    font-size: 13px; color: var(--dim); flex: 0 0 auto;
+  }
+  .events { flex: 1; overflow-y: auto; padding: 12px 16px; }
+
+  .ev {
+    display: flex; gap: 12px; padding: 10px 12px; margin-bottom: 8px;
+    background: var(--panel); border: 1px solid var(--line);
+    border-left: 3px solid var(--line); border-radius: 10px;
+    animation: slide .25s ease;
+  }
+  @keyframes slide { from { opacity: 0; transform: translateY(-6px); } }
+  .ev.doorbell { border-left-color: var(--doorbell); background: #241a12; }
+  .ev.person   { border-left-color: var(--ok); }
+  .ev.anon     { border-left-color: var(--accent); }
+  .ev.system   { border-left-color: var(--line); opacity: .72; }
+  .ev.unverified { border-left-color: var(--warn); }
+
+  .ev .thumb {
+    width: 64px; height: 64px; flex: 0 0 64px; border-radius: 8px;
+    object-fit: cover; background: var(--panel2); cursor: zoom-in;
+    border: 1px solid var(--line);
+  }
+  .ev .thumb.empty { display: flex; align-items: center; justify-content: center; color: var(--dim); font-size: 20px; cursor: default; }
+  .ev .body { flex: 1; min-width: 0; }
+  .ev .row1 { display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; }
+  .ev .who { font-weight: 600; font-size: 15px; }
+  .ev .how {
+    font-size: 12px; padding: 1px 8px; border-radius: 999px;
+    background: var(--panel2); border: 1px solid var(--line); color: var(--dim);
+  }
+  .ev .how.face { color: var(--ok); border-color: #2b5c31; background: #13210f; }
+  .ev .when { margin-left: auto; font-size: 12px; color: var(--dim); font-variant-numeric: tabular-nums; }
+  .ev .row2 { font-size: 12px; color: var(--dim); margin-top: 3px; }
+  .ev .raw { font-size: 11px; color: #5b6673; margin-top: 2px; font-family: ui-monospace, monospace; }
+  .keepopen { font-size: 11px; color: var(--warn); margin-top: 3px; }
+
+  .empty-state { color: var(--dim); text-align: center; padding: 48px 20px; }
+
+  /* ---------- 图片放大 ---------- */
+  .lightbox {
+    position: fixed; inset: 0; background: rgba(0,0,0,.88); z-index: 50;
+    display: none; align-items: center; justify-content: center; cursor: zoom-out;
+  }
+  .lightbox.show { display: flex; }
+  .lightbox img { max-width: 92vw; max-height: 92vh; border-radius: 10px; }
+
+  .toast {
+    position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%);
+    background: var(--panel2); border: 1px solid var(--line); color: var(--fg);
+    padding: 10px 18px; border-radius: 10px; opacity: 0; pointer-events: none;
+    transition: opacity .2s; z-index: 60; font-size: 14px;
+  }
+  .toast.show { opacity: 1; }
+  .toast.err { border-color: var(--bad); color: #ffb4b0; }
+</style>
+</head>
+<body>
+<div class="app">
+  <header>
+    <h1>门禁中控屏</h1>
+    <span class="pill"><span class="dot" id="dot-device"></span><span id="txt-device">设备</span></span>
+    <span class="pill"><span class="dot" id="dot-screen"></span><span id="txt-screen">事件通道</span></span>
+    <span class="spacer"></span>
+    <button class="ghost" id="btn-live">实时画面</button>
+    <button class="primary" id="btn-open">开门</button>
+  </header>
+
+  <main>
+    <section class="video-pane" id="video-pane">
+      <div class="video-head">
+        <span class="title" id="video-title">门口画面</span>
+        <span class="count" id="video-count"></span>
+        <span class="spacer" style="flex:1"></span>
+        <button class="ghost" id="btn-close-video">关闭</button>
+      </div>
+      <div class="placeholder" id="video-placeholder">正在建立视频连接…<br><span style="font-size:12px">首次连接约 1 秒</span></div>
+      <iframe id="video-frame" allow="autoplay; fullscreen" style="display:none"></iframe>
+    </section>
+
+    <section class="events-pane">
+      <div class="events-head">
+        <span>实时事件</span>
+        <span id="ev-count"></span>
+        <span class="spacer" style="flex:1"></span>
+        <span id="last-update"></span>
+      </div>
+      <div class="events" id="events"></div>
+    </section>
+  </main>
+</div>
+
+<div class="lightbox" id="lightbox"><img id="lightbox-img" alt="抓拍图"></div>
+<div class="toast" id="toast"></div>
+
+<script>
+(() => {
+  "use strict";
+
+  const $ = (id) => document.getElementById(id);
+  const el = {
+    dotDevice: $("dot-device"), txtDevice: $("txt-device"),
+    dotScreen: $("dot-screen"), txtScreen: $("txt-screen"),
+    videoPane: $("video-pane"), videoFrame: $("video-frame"),
+    videoPlaceholder: $("video-placeholder"), videoCount: $("video-count"),
+    videoTitle: $("video-title"),
+    events: $("events"), evCount: $("ev-count"), lastUpdate: $("last-update"),
+    btnOpen: $("btn-open"), btnLive: $("btn-live"), btnCloseVideo: $("btn-close-video"),
+    lightbox: $("lightbox"), lightboxImg: $("lightbox-img"), toast: $("toast"),
+  };
+
+  let cfg = { go2rtc: null, stream: "door", doorbellSeconds: 30 };
+  let streamTimer = null;
+  let rendered = 0;
+
+  // ---------- 通用 ----------
+  function toast(msg, isErr) {
+    el.toast.textContent = msg;
+    el.toast.className = "toast show" + (isErr ? " err" : "");
+    clearTimeout(toast._t);
+    toast._t = setTimeout(() => { el.toast.className = "toast"; }, 2600);
+  }
+
+  function fmtTime(iso) {
+    if (!iso) return "";
+    const d = new Date(iso);
+    if (isNaN(d)) return iso;
+    const p = (n) => String(n).padStart(2, "0");
+    const today = new Date();
+    const sameDay = d.toDateString() === today.toDateString();
+    const hm = `${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}`;
+    return sameDay ? hm : `${p(d.getMonth() + 1)}-${p(d.getDate())} ${hm}`;
+  }
+
+  // ---------- 视频 ----------
+  function go2rtcBase() {
+    if (cfg.go2rtc) return cfg.go2rtc;
+    // 兜底：用当前页面主机的 1984 端口
+    return `${location.protocol}//${location.hostname}:1984`;
+  }
+
+  function showVideo(reason, seconds) {
+    el.videoTitle.textContent = reason || "门口画面";
+    el.videoPlaceholder.style.display = "flex";
+    el.videoFrame.style.display = "none";
+
+    const url = `${go2rtcBase()}/webrtc.html?src=${encodeURIComponent(cfg.stream)}`;
+    if (el.videoFrame.dataset.url !== url) {
+      el.videoFrame.dataset.url = url;
+      el.videoFrame.src = url;
+    }
+    el.videoFrame.onload = () => {
+      el.videoPlaceholder.style.display = "none";
+      el.videoFrame.style.display = "block";
+    };
+    el.videoPane.classList.add("show");
+
+    clearInterval(streamTimer);
+    let left = seconds || cfg.doorbellSeconds;
+    const tick = () => {
+      el.videoCount.textContent = left > 0 ? `${left}s 后自动关闭` : "";
+      if (left-- <= 0) { clearInterval(streamTimer); hideVideo(); }
+    };
+    tick();
+    streamTimer = setInterval(tick, 1000);
+  }
+
+  function hideVideo() {
+    clearInterval(streamTimer);
+    streamTimer = null;
+    el.videoCount.textContent = "";
+    el.videoPane.classList.remove("show");
+    // 清掉 src 才会让 go2rtc 停止拉流
+    setTimeout(() => {
+      el.videoFrame.src = "about:blank";
+      el.videoFrame.dataset.url = "";
+    }, 300);
+  }
+
+  el.btnLive.onclick = () => showVideo("实时画面", 120);
+  el.btnCloseVideo.onclick = hideVideo;
+
+  // ---------- 开门 ----------
+  el.btnOpen.onclick = async () => {
+    el.btnOpen.disabled = true;
+    const old = el.btnOpen.textContent;
+    el.btnOpen.textContent = "开门中…";
+    try {
+      const r = await fetch("/api/door/open", { method: "POST" });
+      const j = await r.json();
+      toast(j.ok ? "已发送开门指令" : `开门失败：${j.detail}`, !j.ok);
+    } catch (e) {
+      toast(`开门请求出错：${e.message}`, true);
+    } finally {
+      el.btnOpen.disabled = false;
+      el.btnOpen.textContent = old;
+    }
+  };
+
+  // ---------- 事件渲染 ----------
+  const METHOD_CLASS = { "人脸": "face" };
+
+  function methodLabel(ev) {
+    if (ev.method) return ev.method;
+    if (ev.eventName && ev.eventName.includes("门铃")) return "门铃";
+    return null;
+  }
+
+  function whoLabel(ev) {
+    if (ev.personName) return ev.personName;
+    if (ev.person) return `工号 ${ev.person}`;
+    if (ev.cardNo) return `卡号 ${ev.cardNo}`;
+    if (ev.remoteHost) return `远程 ${ev.remoteHost}`;
+    return ev.eventName || "事件";
+  }
+
+  function render(ev, prepend) {
+    const cls = ["ev"];
+    if ((ev.eventName || "").includes("门铃")) cls.push("doorbell");
+    else if (ev.actorKind === "person") cls.push("person");
+    else if (ev.actorKind === "anonymous") cls.push("anon");
+    else cls.push("system");
+    if (ev.codeVerified === false) cls.push("unverified");
+
+    const node = document.createElement("div");
+    node.className = cls.join(" ");
+    if (ev.serialNo != null) node.dataset.serial = ev.serialNo;
+
+    const thumb = document.createElement("div");
+    thumb.className = "thumb empty";
+    thumb.textContent = "—";
+    const hasPic = ev.has_picture || ev.hasPicture;
+    if (hasPic && ev.serialNo != null) {
+      const img = document.createElement("img");
+      img.className = "thumb";
+      img.loading = "lazy";
+      img.src = `/api/picture/${ev.serialNo}`;
+      img.alt = "抓拍";
+      img.onclick = () => {
+        el.lightboxImg.src = img.src;
+        el.lightbox.classList.add("show");
+      };
+      thumb.replaceWith(img);
+    }
+
+    const body = document.createElement("div");
+    body.className = "body";
+
+    const row1 = document.createElement("div");
+    row1.className = "row1";
+    const who = document.createElement("span");
+    who.className = "who";
+    who.textContent = whoLabel(ev);
+    row1.appendChild(who);
+
+    const ml = methodLabel(ev);
+    if (ml) {
+      const how = document.createElement("span");
+      how.className = "how " + (METHOD_CLASS[ml] || "");
+      how.textContent = ml;
+      row1.appendChild(how);
+    }
+    const when = document.createElement("span");
+    when.className = "when";
+    when.textContent = fmtTime(ev.time);
+    row1.appendChild(when);
+    body.appendChild(row1);
+
+    if (ev.personName && ev.person) {
+      const r2 = document.createElement("div");
+      r2.className = "row2";
+      r2.textContent = `工号 ${ev.person}`;
+      body.appendChild(r2);
+    }
+    if (ev.remoteHost) {
+      const r2 = document.createElement("div");
+      r2.className = "row2";
+      r2.textContent = `来自 ${ev.remoteHost}`;
+      body.appendChild(r2);
+    }
+    if (ev.codeVerified === false) {
+      const k = document.createElement("div");
+      k.className = "keepopen";
+      k.textContent = "⚠ 该事件码尚未在本机确认含义";
+      body.appendChild(k);
+    }
+
+    node.appendChild(thumb);
+    node.appendChild(body);
+
+    if (prepend && el.events.firstChild) el.events.insertBefore(node, el.events.firstChild);
+    else el.events.appendChild(node);
+
+    rendered++;
+    el.evCount.textContent = `${rendered} 条`;
+    while (el.events.children.length > 300) el.events.removeChild(el.events.lastChild);
+  }
+
+  el.lightbox.onclick = () => el.lightbox.classList.remove("show");
+
+  // ---------- 状态 ----------
+  async function pollStatus() {
+    try {
+      const r = await fetch("/api/status");
+      const s = await r.json();
+      // 事件入口按配置可能是 HTTP 监听或长连接，任一正常就算设备侧通
+      const ok = s.httpListeningOk || s.streamConnected;
+      el.dotDevice.className = "dot " + (ok ? "on" : "off");
+      const how = s.httpListeningOk ? "HTTP 监听" : (s.streamConnected ? "事件长连接" : "未接入");
+      el.txtDevice.textContent = ok
+        ? `设备已接入 ${s.device}（${how}）`
+        : `设备未接入 ${s.device}`;
+      el.dotScreen.className = "dot on";
+      el.txtScreen.textContent = `中控屏 ${s.screens} 个`;
+      el.lastUpdate.textContent = `已收 ${s.stats.total} 条 · 实时 ${s.stats.live} · 抓拍 ${s.stats.pictures}`;
+    } catch (e) {
+      el.dotDevice.className = "dot off";
+      el.dotScreen.className = "dot off";
+      el.txtScreen.textContent = "网关不可达";
+    }
+  }
+
+  // ---------- 启动 ----------
+  async function init() {
+    try {
+      const r = await fetch("/api/config");
+      cfg = Object.assign(cfg, await r.json());
+    } catch (e) { /* 用兜底 */ }
+
+    try {
+      const r = await fetch("/api/events/recent");
+      const j = await r.json();
+      // 倒序返回，反向追加让最新在最上面
+      (j.events || []).slice().reverse().forEach((ev) => render(ev, true));
+      if (!(j.events || []).length) {
+        el.events.innerHTML = '<div class="empty-state">暂无事件<br><span style="font-size:12px">有人刷脸、按门铃或开门时，这里会实时出现</span></div>';
+      }
+    } catch (e) { /* 忽略 */ }
+
+    const es = new EventSource("/api/events/stream");
+    es.onopen = () => { el.dotScreen.className = "dot on"; };
+    es.onerror = () => { el.dotScreen.className = "dot off"; };
+    es.onmessage = (m) => {
+      let msg;
+      try { msg = JSON.parse(m.data); } catch (e) { return; }
+      if (msg.kind === "doorbell") {
+        render(msg.event, true);
+        showVideo("门铃 · 访客呼叫", msg.seconds);
+        toast("有人按门铃");
+      } else if (msg.kind === "event") {
+        // 只要真正的开门动作类事件；已在 recent 里渲染过的靠 serialNo 去重
+        if (msg.event && msg.event.serialNo != null &&
+            el.events.querySelector(`[data-serial="${msg.event.serialNo}"]`)) return;
+        render(msg.event, true);
+      } else if (msg.kind === "picture") {
+        const node = el.events.querySelector(`[data-serial="${msg.serialNo}"] .thumb.empty`);
+        if (node) {
+          const img = document.createElement("img");
+          img.className = "thumb";
+          img.src = `/api/picture/${msg.serialNo}?t=${Date.now()}`;
+          img.onclick = () => {
+            el.lightboxImg.src = img.src;
+            el.lightbox.classList.add("show");
+          };
+          node.replaceWith(img);
+        }
+      }
+    };
+
+    pollStatus();
+    setInterval(pollStatus, 5000);
+  }
+
+  init();
+})();
+</script>
+</body>
+</html>

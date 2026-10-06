@@ -198,6 +198,17 @@ def test_structure() -> None:
         check(re.fullmatch(r"\d+\.\d+\.\d+", manifest.get("version", "")),
               "version 是语义化版本")
 
+        # HA 要求 manifest 的键顺序：domain、name，其余按字母序。
+        # 这条是 hassfest 在 CI 上抓出来的——加在本地就不会再等一轮 CI 才发现。
+        keys = list(manifest)
+        if keys[:2] == ["domain", "name"]:
+            rest = keys[2:]
+            check(rest == sorted(rest),
+                  "manifest 键序符合 HA 要求（domain、name，其余字母序）",
+                  f"当前 {rest}，应为 {sorted(rest)}")
+        else:
+            check(False, "manifest 前两个键应为 domain、name", f"实际 {keys[:2]}")
+
     hacs = json.loads((ROOT / "hacs.json").read_text(encoding="utf-8"))
     check("name" in hacs and "homeassistant" in hacs, "hacs.json 含 name / homeassistant")
 
@@ -353,46 +364,64 @@ def test_single_source_of_truth(ec) -> None:
               if literal_table else "")
 
     # 行为层面再确认一次：三者对关键码的判断必须一致
-    def load(path, name):
-        spec = importlib.util.spec_from_file_location(name, path)
-        module = importlib.util.module_from_spec(spec)
-        sys.modules[name] = module
-        spec.loader.exec_module(module)
-        return module
+    def load(path, name, label):
+        """
+        加载失败要变成一条检查失败，绝不能让脚本崩掉。
 
-    probe = load(ROOT / "tools" / "acs_probe.py", "acs_probe_check")
-    gateway = load(ROOT / "standalone" / "gateway" / "eventcodes.py", "acs_gw_check")
+        踩过：CI 上没装 requests，探针在模块级 sys.exit，SystemExit 直接穿透
+        校验器把整个脚本带崩，日志里只剩一句 "exit code 1"，后面所有检查结果
+        全被吞掉，排查时完全看不出发生了什么。
+        """
+        try:
+            spec = importlib.util.spec_from_file_location(name, path)
+            module = importlib.util.module_from_spec(spec)
+            sys.modules[name] = module
+            spec.loader.exec_module(module)
+            return module
+        except SystemExit as err:
+            check(False, f"{label} 可被加载", f"模块在加载时退出：{err}")
+        except BaseException as err:                       # noqa: BLE001
+            check(False, f"{label} 可被加载", f"{type(err).__name__}: {err}")
+        return None
+
+    probe = load(ROOT / "tools" / "acs_probe.py", "acs_probe_check", "调试探针")
+    gateway = load(ROOT / "standalone" / "gateway" / "eventcodes.py",
+                   "acs_gw_check", "独立网关")
 
     for major, minor in [(3, 1024), (5, 37), (5, 75), (5, 21), (3, 112)]:
         expected = ec.describe(major, minor)
 
-        probe_got = probe.EC.describe(major, minor)
-        check(probe_got == expected,
-              f"探针与集成对 ({major},{minor}) 判断一致",
-              f"探针={probe_got} 集成={expected}")
+        if probe is not None:
+            probe_got = probe.EC.describe(major, minor)
+            check(probe_got == expected,
+                  f"探针与集成对 ({major},{minor}) 判断一致",
+                  f"探针={probe_got} 集成={expected}")
 
-        gw_got = gateway.describe(major, minor)
-        check(gw_got == expected,
-              f"独立网关与集成对 ({major},{minor}) 判断一致",
-              f"网关={gw_got} 集成={expected}")
+        if gateway is not None:
+            gw_got = gateway.describe(major, minor)
+            check(gw_got == expected,
+                  f"独立网关与集成对 ({major},{minor}) 判断一致",
+                  f"网关={gw_got} 集成={expected}")
 
     # 适配层必须给出 store/server 约定的键，否则独立网关运行时会 KeyError
-    rec = gateway.normalize({
-        "dateTime": "2026-10-06T17:23:06+08:00",
-        "eventType": "AccessControllerEvent",
-        "AccessControllerEvent": {
-            "majorEventType": 5, "subEventType": 75,
-            "employeeNoString": "1", "doorNo": 1, "currentEvent": True, "serialNo": 20,
-        },
-    })
     need = {"serialNo", "frontSerialNo", "time", "live", "major", "minor", "majorName",
             "eventName", "codeVerified", "declared", "method", "actorKind", "person",
             "personName", "cardNo", "doorNo", "remoteHost", "netUser",
             "configuredVerifyMode", "hasPicture"}
-    missing = need - set(rec or {})
-    check(rec is not None and not missing,
-          "独立网关的 normalize 输出键与 store/server 约定一致",
-          f"缺少 {sorted(missing)}" if missing else "")
+    if gateway is not None:
+        rec = gateway.normalize({
+            "dateTime": "2026-10-06T17:23:06+08:00",
+            "eventType": "AccessControllerEvent",
+            "AccessControllerEvent": {
+                "majorEventType": 5, "subEventType": 75,
+                "employeeNoString": "1", "doorNo": 1,
+                "currentEvent": True, "serialNo": 20,
+            },
+        })
+        missing = need - set(rec or {})
+        check(rec is not None and not missing,
+              "独立网关的 normalize 输出键与 store/server 约定一致",
+              f"缺少 {sorted(missing)}" if missing else "")
 
 
 def main() -> int:

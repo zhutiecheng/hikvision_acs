@@ -249,12 +249,20 @@ def cmd_sniff(dev: Device, args) -> None:
     print()
 
     url = dev.url("/ISAPI/Event/notification/alertStream")
-    # 读超时设短一点：流空闲时 iter_content 会一直阻塞，只有让它周期性抛
-    # ReadTimeout，下面的 deadline 检查才有机会执行（否则 -t 形同虚设）。
+    # 读超时：流空闲时 iter_content 会一直阻塞，只有让它周期性超时，
+    # 下面的 deadline 检查才有机会执行（否则 -t 形同虚设）。
+    #
+    # 但不能太短：设备在发送响应头之前可能要想一会儿（尤其带历史补给时），
+    # 而 requests 对初次响应和后续读取用的是同一个读超时。实测 5 秒会把
+    # 初次握手也一起掐掉，报 "连接 alertStream 失败"。20 秒是平衡点。
     try:
-        r = dev.session.get(url, stream=True, timeout=(10, 5))
+        r = dev.session.get(url, stream=True, timeout=(15, 20))
     except Exception as e:
-        die(f"连接 alertStream 失败: {e}")
+        die(f"连接 alertStream 失败: {e}\n"
+            "     如果认证能过但一直拿不到响应头，多半是设备那条唯一的\n"
+            "     alertStream 会话被之前的异常断线占住了。设备因为\"有事件才写数据\"，\n"
+            "     察觉不到对端已死，要很久才释放。可重试几次，或重启设备。\n"
+            "     另外：不要同时开两个客户端，会互相顶掉。")
 
     if r.status_code != 200:
         die(f"alertStream 返回 HTTP {r.status_code}: {r.text[:500]}")
@@ -291,10 +299,19 @@ def cmd_sniff(dev: Device, args) -> None:
         while time.time() < deadline:
             try:
                 chunk = next(r.iter_content(chunk_size=8192))
-            except requests.exceptions.ReadTimeout:
-                continue          # 空闲是正常的，回到上面重新检查 deadline
             except StopIteration:
                 break
+            except requests.exceptions.ReadTimeout:
+                continue          # 空闲是正常的，回到上面重新检查 deadline
+            except requests.exceptions.ConnectionError as err:
+                # 坑：requests 在**流式**读取时会把 urllib3 的读超时包成
+                # ConnectionError 而不是 ReadTimeout，只捕获 ReadTimeout
+                # 会让空闲超时直接穿透、把采样进程崩掉（实测踩到，
+                # 而且因为事件一直到来时不会触发，表现得像随机崩溃）。
+                # 所以这里要区分：读超时=空闲，继续；其余=连接真断了，往外抛。
+                if "timed out" in str(err).lower():
+                    continue
+                raise
             if not chunk:
                 continue
             buffer += chunk

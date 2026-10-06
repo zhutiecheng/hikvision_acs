@@ -44,10 +44,12 @@
           "scan_interval": "Poll interval (seconds)",
           "door": "Door number",
           "rtsp_channel": "Video stream",
-          "use_http_listening": "Enable real-time event push"
+          "use_http_listening": "Enable real-time event push",
+          "sync_time": "Sync device clock automatically"
         },
         "data_description": {
-          "scan_interval": "Fallback polling, used to fill gaps missed by push"
+          "scan_interval": "Fallback polling, used to fill gaps missed by push",
+          "sync_time": "A wrong device clock skews event timestamps and delays event delivery"
         }
       }
     }

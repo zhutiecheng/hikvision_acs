@@ -33,7 +33,10 @@ from homeassistant.util import dt as dt_util
 
 from . import eventcodes
 from .const import (
+    CLOCK_SKEW_TOLERANCE,
+    CLOCK_SYNC_THRESHOLD,
     CONF_SCAN_INTERVAL,
+    CONF_SYNC_TIME,
     CONF_USE_HTTP_LISTENING,
     CONF_WEBHOOK_ID,
     DEFAULT_SCAN_INTERVAL,
@@ -245,6 +248,53 @@ class HikvisionCoordinator(DataUpdateCoordinator[HikvisionData]):
         self.data.push_configured = True
         return True
 
+    async def async_sync_device_time(self) -> None:
+        """
+        校正设备时钟。
+
+        为什么值得做：设备时钟不准会同时毁掉三件事——
+        1. 事件时间戳错（日志、考勤、自动化判据全跟着错）
+        2. 轮询兜底的查询窗口按本机时间算，设备偏快时最近的事件落在窗口外，
+           要等后面几轮才补上，表现为"事件上报有延时"
+        3. 与室内机等设备的时间对不上，排障时时间轴无法对齐
+
+        偏差在阈值内不动设备，避免频繁写闪存。
+        """
+        enabled = self.entry.options.get(
+            CONF_SYNC_TIME, self.entry.data.get(CONF_SYNC_TIME, True))
+        if not enabled:
+            return
+        try:
+            device_time = await self.client.async_get_time()
+        except HikvisionError as err:
+            _LOGGER.debug("读取设备时间失败，跳过校时：%s", err)
+            return
+        if device_time is None:
+            return
+
+        now = dt_util.now()
+        try:
+            offset = (device_time - now).total_seconds()
+        except TypeError:
+            # 一边有时区一边没有，无法比较
+            _LOGGER.debug("设备时间缺少时区信息（%s），跳过校时", device_time)
+            return
+
+        if abs(offset) <= CLOCK_SYNC_THRESHOLD:
+            _LOGGER.debug("设备时钟与本机相差 %.0f 秒，在阈值内", offset)
+            return
+
+        _LOGGER.warning(
+            "设备时钟与本机相差 %.0f 秒（设备 %s / 本机 %s），正在校时",
+            offset, device_time.isoformat(timespec="seconds"),
+            now.isoformat(timespec="seconds"))
+        try:
+            await self.client.async_set_time(now)
+        except HikvisionError as err:
+            _LOGGER.warning("设备校时失败：%s", err)
+        else:
+            _LOGGER.info("设备校时完成")
+
     async def async_remove_push(self) -> None:
         if self.webhook_id:
             webhook.async_unregister(self.hass, self.webhook_id)
@@ -295,13 +345,18 @@ class HikvisionCoordinator(DataUpdateCoordinator[HikvisionData]):
         """
         now = dt_util.now()
         start = max(self._window_start, now - timedelta(minutes=FALLBACK_LOOKBACK_MINUTES))
-        # 设备时间可能与本机略有偏差，回退一点避免掐头
+        # 两端都放宽：
+        # - 左端回退一点，避免设备时间偏慢时掐掉开头的事件
+        # - 右端往后放宽，容忍设备时钟**偏快**。实测遇到设备快 118 秒的机器，
+        #   若右端就是 now，则"时间戳在未来"的最近事件永远落不进查询区间，
+        #   只能等后面几轮轮询才补进来——这正是用户感受到的延时来源。
         start = start - timedelta(seconds=30)
+        horizon = now + timedelta(seconds=CLOCK_SKEW_TOLERANCE)
         self._window_start = now
 
         for major in (5, 3, 1, 2):
             try:
-                infos = await self.client.async_query_events(start, now, major=major)
+                infos = await self.client.async_query_events(start, horizon, major=major)
             except HikvisionError as err:
                 _LOGGER.debug("轮询 major=%s 失败：%s", major, err)
                 continue

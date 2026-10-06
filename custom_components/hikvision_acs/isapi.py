@@ -308,6 +308,35 @@ class HikvisionClient:
         _LOGGER.debug("抓拍返回的内容不是 JPEG（%d 字节）", len(body))
         return None
 
+    # -- 时钟 -------------------------------------------------------------
+
+    async def async_get_time(self) -> datetime | None:
+        """读设备本地时间。设备时钟不准会连带影响事件时间和轮询取数。"""
+        text = await self._request_text("GET", "/ISAPI/System/time")
+        m = re.search(r"<localTime>([^<]*)</localTime>", text)
+        if not m or not m.group(1).strip():
+            return None
+        try:
+            return datetime.fromisoformat(m.group(1).strip())
+        except ValueError:
+            _LOGGER.debug("设备时间格式无法解析：%s", m.group(1))
+            return None
+
+    async def async_set_time(self, when: datetime,
+                             timezone: str = "CST-8:00:00") -> None:
+        """把设备时钟校成指定时间。"""
+        xml = (
+            '<?xml version="1.0" encoding="UTF-8"?>'
+            f'<Time version="2.0" xmlns="{XMLNS}">'
+            '<timeMode>manual</timeMode>'
+            f'<localTime>{when.isoformat(timespec="seconds")}</localTime>'
+            f'<timeZone>{timezone}</timeZone>'
+            '</Time>'
+        ).encode()
+        text = await self._request_text(
+            "PUT", "/ISAPI/System/time", data=xml, content_type="application/xml")
+        self._raise_for_status(text, "设备校时")
+
     async def async_probe(self) -> dict[str, str]:
         """连通性 + 认证自检，配置流程里用。"""
         return await self.async_get_device_info()

@@ -17,6 +17,7 @@ from .const import (
     CONF_PASSWORD,
     CONF_RTSP_CHANNEL,
     CONF_SCAN_INTERVAL,
+    CONF_SYNC_TIME,
     CONF_USERNAME,
     CONF_USE_HTTP_LISTENING,
     CONF_WEBHOOK_ID,
@@ -167,6 +168,10 @@ class HikvisionOptionsFlow(OptionsFlow):
                 default=options.get(CONF_USE_HTTP_LISTENING,
                                     data.get(CONF_USE_HTTP_LISTENING,
                                              DEFAULT_USE_HTTP_LISTENING)),
+            ): bool,
+            vol.Optional(
+                CONF_SYNC_TIME,
+                default=options.get(CONF_SYNC_TIME, data.get(CONF_SYNC_TIME, True)),
             ): bool,
         })
         return self.async_show_form(step_id="init", data_schema=schema)

@@ -44,10 +44,12 @@
           "scan_interval": "轮询间隔（秒）",
           "door": "门号",
           "rtsp_channel": "视频码流",
-          "use_http_listening": "启用实时事件推送"
+          "use_http_listening": "启用实时事件推送",
+          "sync_time": "自动校正设备时钟"
         },
         "data_description": {
-          "scan_interval": "这是兜底轮询，用于补齐推送漏掉的事件"
+          "scan_interval": "这是兜底轮询，用于补齐推送漏掉的事件",
+          "sync_time": "设备时钟不准会让事件时间错，也会让事件上报出现延时"
         }
       }
     }

@@ -49,6 +49,9 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
     await coordinator.async_config_entry_first_refresh()
 
+    # 先校时：设备时钟不准会让事件时间错，也会让轮询窗口漏掉最近的事件
+    await coordinator.async_sync_device_time()
+
     # 推送配置失败不算致命——退化成纯轮询仍然可用
     await coordinator.async_setup_push()
 

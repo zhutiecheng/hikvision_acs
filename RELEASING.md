@@ -2,25 +2,26 @@
 
 把这个仓库变成客户能装的 HACS 集成，需要按顺序做以下几步。
 
-## 1. 改掉占位信息（**必须**，否则 HACS 校验会失败）
+## 1. 改掉占位坐标（**必须**，否则 HACS 校验会失败）
 
-现在仓库里用的是占位坐标 `hikvision-acs/hikvision_acs`。改成你的真实仓库地址：
+仓库里现在用的是占位坐标 `hikvision-acs/hikvision_acs`。一条命令改掉：
 
-**`custom_components/hikvision_acs/manifest.json`**
-
-```json
-{
-  "codeowners": ["@你的GitHub用户名"],
-  "documentation": "https://github.com/<你>/<仓库名>",
-  "issue_tracker": "https://github.com/<你>/<仓库名>/issues"
-}
+```bash
+python3 tools/set_repo.py <你的用户名>/<仓库名> --dry-run   # 先看会改什么
+python3 tools/set_repo.py <你的用户名>/<仓库名>             # 确认后写入
 ```
 
-**`hacs.json`** —— 不用改，但确认 `name` 是客户在 HACS 里看到的名称。
+它会改 `manifest.json` 的 `codeowners` / `documentation` / `issue_tracker`、
+蓝图的 `source_url`、以及 `LICENSE` 的版权人，并在改完后校验 `manifest.json`
+仍是合法 JSON（一个逗号写错 HACS 校验就会全盘失败）。
 
-**`CHANGELOG.md`** —— 末尾的 `[0.1.0]:` 链接地址。
+**它不会自动改 `CHANGELOG.md` 末尾的发布链接**——格式特殊，脚本只提醒你手工改：
 
-**`README.md`** —— 里面出现的仓库地址。
+```
+[0.1.0]: https://github.com/<你>/<仓库名>/releases/tag/v0.1.0
+```
+
+改完跑一遍 `python3 tools/validate_integration.py`。
 
 ## 2. 确认许可证
 

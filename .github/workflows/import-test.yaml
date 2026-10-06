@@ -33,6 +33,15 @@ jobs:
           python -m pip install --upgrade pip
           python -m pip install --upgrade homeassistant
 
+          # 裸 pip install homeassistant 不会装组件级的依赖——HA 是在组件
+          # 初始化时按 manifest 里的 requirements 现装的。而 camera 组件依赖
+          # stream 组件，stream/core.py 在**模块级** import numpy，所以导入
+          # camera 平台时就会炸。这里按 HA 的做法把这几个补上。
+          #
+          # 曾经把这个 ModuleNotFoundError 误判成代码 bug，其实是环境缺口：
+          # homeassistant/components/stream/manifest.json 里写着 numpy==2.3.2。
+          python -m pip install numpy
+
       - name: 逐个导入集成模块
         run: |
           python - <<'PY'

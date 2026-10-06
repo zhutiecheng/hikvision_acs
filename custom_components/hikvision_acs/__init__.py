@@ -9,7 +9,6 @@ from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import Platform
 from homeassistant.core import HomeAssistant, ServiceCall, SupportsResponse
 from homeassistant.helpers import config_validation as cv
-from homeassistant.helpers.aiohttp_client import async_get_clientsession
 
 from .const import (
     ATTR_DOOR,
@@ -41,9 +40,7 @@ OPEN_DOOR_SCHEMA = vol.Schema({
 
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
-    session = async_get_clientsession(hass)
     client = HikvisionClient(
-        session,
         entry.data[CONF_HOST],
         entry.data.get(CONF_USERNAME, DEFAULT_USERNAME),
         entry.data[CONF_PASSWORD],
@@ -68,6 +65,8 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     coordinator: HikvisionCoordinator | None = hass.data.get(DOMAIN, {}).get(entry.entry_id)
     if coordinator is not None:
         await coordinator.async_remove_push()
+        # 客户端自己持有 httpx.AsyncClient，卸载时必须关掉，否则连接会泄漏
+        await coordinator.client.async_close()
 
     unloaded = await hass.config_entries.async_unload_platforms(entry, PLATFORMS)
     if unloaded:

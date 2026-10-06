@@ -3,6 +3,35 @@
 本文件遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，
 版本号遵循[语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [0.1.1] - 2026-10-06
+
+### 修复
+
+- **在 HA 里添加集成时报「无法加载配置向导 / Invalid handler specified」**
+  ——这是致命问题，集成完全无法使用。根因是 `isapi.py` 写了
+  `from aiohttp import DigestAuth`，而 **aiohttp 不导出 DigestAuth**，
+  导致整个集成包导入失败。HA 报的错误完全指不到根因，只有真装上 HA 才会暴露。
+  已改用 `httpx`（HA 核心依赖，自带 DigestAuth）——Home Assistant 自己的源码里
+  就写着 "aiohttp don't support DigestAuth so we use httpx"。
+- `tools/correlate.py` 导入已删除的 `EVENT_CODES`，一执行就 ImportError。
+- `tools/acs_probe.py` 的 `sniff` 在流空闲时崩溃：requests 在流式读取时把
+  urllib3 的读超时包成 ConnectionError 而不是 ReadTimeout。
+  因为事件持续到来时不触发，它表现得像随机崩溃。
+
+### 新增
+
+- CI 工作流「集成导入测试」：真的安装 Home Assistant 并逐个导入集成模块。
+  hassfest 和 HACS **都不会加载集成**，所以它们拦不住 import 层面的错误——
+  上面那个致命 bug 就是三绿状态下溜过去的。
+- 本地校验新增「第三方导入」检查，把 aiohttp DigestAuth 这个坑钉死。
+- 本地校验新增「工具脚本可导入」检查。
+
+### 已知限制
+
+- `(3, 1024)` 远程开门的报文里 `remoteHostAddr` 与 `netUser` 均为空，
+  **无法判断是哪台室内机发起的**。多室内机 / 管理处场景下这一项需另行解决。
+- 刷卡 / 指纹类事件码来自公开文档，测试机上无卡未现场验证。
+
 ## [0.1.0] - 2026-10-06
 
 首个版本。已在 **DS-K1T341BM（固件 V3.7.80）** 上端到端实测通过。
@@ -65,4 +94,5 @@
 
 刷卡 / 指纹类事件码来自公开文档，测试机上无卡无法现场验证，接入真实卡后需复核。
 
+[0.1.1]: https://github.com/zhutiecheng/hikvision_acs/releases/tag/v0.1.1
 [0.1.0]: https://github.com/zhutiecheng/hikvision_acs/releases/tag/v0.1.0

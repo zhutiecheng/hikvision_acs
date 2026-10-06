@@ -440,6 +440,29 @@ def test_single_source_of_truth(ec) -> None:
               f"缺少 {sorted(missing)}" if missing else "")
 
 
+def test_third_party_imports() -> None:
+    """
+    集成里不允许出现 aiohttp 的 Digest 认证。
+
+    aiohttp 不导出 DigestAuth，写成 `from aiohttp import DigestAuth` 会让整个
+    集成包导入失败，而 HA 报的是 "Invalid handler specified" —— 指不到根因。
+    实测踩到过，正确做法是 httpx（HA 核心依赖，自带 DigestAuth）。
+
+    这类问题只有「装上 HA 真导入一遍」才能彻底拦住（见 .github/workflows/
+    import-test.yaml）。这里只是把已经踩过的那个坑钉死，成本几乎为零。
+    """
+    section("8. 第三方导入")
+
+    for path in sorted(COMPONENT.glob("*.py")):
+        src = path.read_text(encoding="utf-8")
+        code_lines = [ln for ln in src.splitlines()
+                      if ln.strip().startswith(("import ", "from "))]
+        bad = [ln for ln in code_lines
+               if "aiohttp" in ln and "DigestAuth" in ln]
+        check(not bad, f"{path.name} 没有 aiohttp DigestAuth 导入",
+              f"应改用 httpx：{bad}")
+
+
 def test_tools_importable() -> None:
     """
     每个 tools/*.py 都必须能被导入。
@@ -477,6 +500,7 @@ def main() -> int:
     test_undefined_names()
     test_yaml()
     test_single_source_of_truth(ec)
+    test_third_party_imports()
     test_tools_importable()
 
     section("结果")

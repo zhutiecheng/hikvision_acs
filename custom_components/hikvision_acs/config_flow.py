@@ -10,7 +10,6 @@ import voluptuous as vol
 from homeassistant.config_entries import ConfigEntry, ConfigFlow, OptionsFlow
 from homeassistant.core import callback
 from homeassistant.data_entry_flow import FlowResult
-from homeassistant.helpers.aiohttp_client import async_get_clientsession
 
 from .const import (
     CONF_DOOR,
@@ -59,7 +58,6 @@ class HikvisionConfigFlow(ConfigFlow, domain=DOMAIN):
         if user_input is not None:
             host = user_input[CONF_HOST].strip()
             client = HikvisionClient(
-                async_get_clientsession(self.hass),
                 host,
                 user_input.get(CONF_USERNAME, DEFAULT_USERNAME),
                 user_input[CONF_PASSWORD],
@@ -76,7 +74,9 @@ class HikvisionConfigFlow(ConfigFlow, domain=DOMAIN):
             except Exception:                            # noqa: BLE001
                 _LOGGER.exception("探测设备时发生意外错误")
                 errors["base"] = "unknown"
-            else:
+            finally:
+                await client.async_close()
+            if not errors:
                 if info.get("deviceType") not in (None, "", "ACS"):
                     errors["base"] = "not_access_controller"
                 else:
@@ -108,7 +108,6 @@ class HikvisionConfigFlow(ConfigFlow, domain=DOMAIN):
 
         if user_input is not None:
             client = HikvisionClient(
-                async_get_clientsession(self.hass),
                 entry.data[CONF_HOST],
                 entry.data.get(CONF_USERNAME, DEFAULT_USERNAME),
                 user_input[CONF_PASSWORD],
@@ -119,7 +118,9 @@ class HikvisionConfigFlow(ConfigFlow, domain=DOMAIN):
                 errors["base"] = "invalid_auth"
             except HikvisionError:
                 errors["base"] = "cannot_connect"
-            else:
+            finally:
+                await client.async_close()
+            if not errors:
                 return self.async_update_reload_and_abort(
                     entry, data={**entry.data, CONF_PASSWORD: user_input[CONF_PASSWORD]})
 

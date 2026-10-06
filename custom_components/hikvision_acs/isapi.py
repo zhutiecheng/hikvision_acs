@@ -1,8 +1,14 @@
 """
 海康 ISAPI 异步客户端。
 
-用 aiohttp（HA 自带，无需第三方依赖）而非 urllib：HA 是异步的，在事件循环里跑阻塞
-IO 会把整个 HA 卡住。
+**认证必须用 httpx，不能用 aiohttp。**
+
+aiohttp 不支持 HTTP Digest 认证（Home Assistant 自己的源码里就写着
+"aiohttp don't support DigestAuth so we use httpx"）。我最初写成
+`from aiohttp import DigestAuth`，结果是 ImportError 让整个集成包导入失败，
+HA 报的却是 "Invalid handler specified" —— 一个完全指不到根因的错误。
+
+httpx 是 HA 的核心依赖，直接可用，不需要在 manifest 里声明 requirements。
 
 两个来自真机实测的要点：
 
@@ -22,8 +28,7 @@ from dataclasses import dataclass
 from datetime import datetime
 from xml.etree import ElementTree as ET
 
-import aiohttp
-from aiohttp import DigestAuth
+import httpx
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -70,7 +75,7 @@ def parse_response_status(text: str) -> ResponseStatus | None:
     """
     解析海康的 <ResponseStatus>。
 
-    这是判断成败的唯一可靠依据——HTTP 200 不代表成功。
+    这是判断成败的唯一可靠依据——HTTP 200 不代表业务成功。
     """
     if "<ResponseStatus" not in text:
         return None
@@ -79,7 +84,6 @@ def parse_response_status(text: str) -> ResponseStatus | None:
     except ET.ParseError:
         return None
     if _local(root.tag) != "ResponseStatus":
-        # 可能外面还包了一层
         found = None
         for child in root.iter():
             if _local(child.tag) == "ResponseStatus":
@@ -109,50 +113,50 @@ def _values(text: str) -> dict[str, str]:
 class HikvisionClient:
     """一个门禁设备的 ISAPI 客户端。"""
 
-    def __init__(self, session: aiohttp.ClientSession, host: str,
-                 username: str, password: str, timeout: int = DEFAULT_TIMEOUT) -> None:
-        self._session = session
+    def __init__(self, host: str, username: str, password: str,
+                 timeout: int = DEFAULT_TIMEOUT) -> None:
         self.host = host
-        self._username = username
-        self._password = password
-        self._timeout = aiohttp.ClientTimeout(total=timeout)
-        self._scheme = "http"
-        self._port: int | None = None
+        self._client = httpx.AsyncClient(
+            auth=httpx.DigestAuth(username, password),
+            timeout=httpx.Timeout(timeout),
+            follow_redirects=True,
+        )
 
-    # -- 基础请求 ---------------------------------------------------------
+    async def async_close(self) -> None:
+        await self._client.aclose()
 
     @property
     def base_url(self) -> str:
-        port = f":{self._port}" if self._port else ""
-        return f"{self._scheme}://{self.host}{port}"
+        return f"http://{self.host}"
+
+    # -- 基础请求 ---------------------------------------------------------
 
     async def _request(self, method: str, path: str, *,
                        data: bytes | None = None,
                        content_type: str | None = None,
-                       timeout: aiohttp.ClientTimeout | None = None) -> tuple[int, bytes, dict]:
-        url = self.base_url + path
+                       timeout: float | None = None) -> tuple[int, bytes]:
         headers = {"Content-Type": content_type} if content_type else {}
+        url = self.base_url + path
         try:
-            async with self._session.request(
-                method, url, data=data, headers=headers,
-                auth=DigestAuth(self._username, self._password),
-                timeout=timeout or self._timeout,
-            ) as resp:
-                body = await resp.read()
-                return resp.status, body, dict(resp.headers)
-        except aiohttp.ClientResponseError as err:
-            if err.status == 401:
-                raise HikvisionAuthError("认证失败，请检查用户名和密码") from err
-            raise HikvisionError(f"HTTP {err.status}") from err
-        except (aiohttp.ClientError, TimeoutError) as err:
-            raise HikvisionConnectionError(f"连接 {self.host} 失败: {err}") from err
+            resp = await self._client.request(
+                method, url, content=data, headers=headers,
+                timeout=timeout if timeout is not None else httpx.USE_CLIENT_DEFAULT,
+            )
+        except httpx.TimeoutException as err:
+            raise HikvisionConnectionError(f"连接 {self.host} 超时：{err}") from err
+        except httpx.HTTPError as err:
+            raise HikvisionConnectionError(f"连接 {self.host} 失败：{err}") from err
+
+        if resp.status_code == 401:
+            raise HikvisionAuthError("认证失败，请检查用户名和密码")
+        return resp.status_code, resp.content
 
     async def _request_text(self, method: str, path: str, *,
                             data: bytes | None = None,
                             content_type: str | None = None,
-                            timeout: aiohttp.ClientTimeout | None = None) -> str:
-        _, body, _ = await self._request(method, path, data=data,
-                                         content_type=content_type, timeout=timeout)
+                            timeout: float | None = None) -> str:
+        _, body = await self._request(method, path, data=data,
+                                      content_type=content_type, timeout=timeout)
         return body.decode("utf-8", "replace")
 
     @staticmethod
@@ -293,16 +297,15 @@ class HikvisionClient:
         门铃响起时先出这张图再起视频流，观感差别很大（实测取图约 0.7 秒）。
         """
         try:
-            status, body, headers = await self._request(
-                "GET", f"/ISAPI/Streaming/channels/{channel}/picture",
-                timeout=aiohttp.ClientTimeout(total=15))
-        except HikvisionError:
+            status, body = await self._request(
+                "GET", f"/ISAPI/Streaming/channels/{channel}/picture", timeout=15)
+        except (HikvisionConnectionError, HikvisionAuthError):
             return None
         if status != 200 or not body:
             return None
         if body[:2] == b"\xff\xd8":
             return body
-        _LOGGER.debug("抓拍返回的内容不是 JPEG：%s", headers.get("Content-Type"))
+        _LOGGER.debug("抓拍返回的内容不是 JPEG（%d 字节）", len(body))
         return None
 
     async def async_probe(self) -> dict[str, str]:

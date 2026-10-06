@@ -1,0 +1,82 @@
+name: 集成导入测试
+
+# 为什么单独有这么一个工作流：
+#
+# hassfest 和 HACS 校验的是**仓库结构与 manifest**，它们**不会加载集成**。
+# 所以一个 `from aiohttp import DigestAuth`（aiohttp 根本不导出这个名字）
+# 能一路绿着通过所有校验，直到用户在 HA 里点「添加集成」才炸，
+# 报的还是 "Invalid handler specified" —— 一个完全指不到根因的错误。
+#
+# 这个工作流真的装上 Home Assistant，然后导入集成里的每一个模块。
+# 它拦不住运行时逻辑错误，但能拦住所有 import 层面的错误。
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  import:
+    name: 导入集成全部模块
+    runs-on: ubuntu-latest
+    steps:
+      - name: 检出仓库
+        uses: actions/checkout@v4
+
+      - name: 安装 Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+
+      - name: 安装 Home Assistant（提供真实的运行环境与依赖）
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install --upgrade homeassistant
+
+      - name: 逐个导入集成模块
+        run: |
+          python - <<'PY'
+          import importlib, pathlib, shutil, sys, traceback
+
+          root = pathlib.Path.cwd()
+          # 模拟 HA 的 config 目录布局
+          cfg = root / ".ci-config"
+          dest = cfg / "custom_components" / "hikvision_acs"
+          dest.parent.mkdir(parents=True, exist_ok=True)
+          shutil.copytree(root / "custom_components" / "hikvision_acs", dest,
+                          dirs_exist_ok=True)
+          sys.path.insert(0, str(cfg))
+
+          modules = [
+              "custom_components.hikvision_acs",
+              "custom_components.hikvision_acs.config_flow",
+              "custom_components.hikvision_acs.const",
+              "custom_components.hikvision_acs.coordinator",
+              "custom_components.hikvision_acs.isapi",
+              "custom_components.hikvision_acs.eventcodes",
+              "custom_components.hikvision_acs.entity",
+              "custom_components.hikvision_acs.event",
+              "custom_components.hikvision_acs.binary_sensor",
+              "custom_components.hikvision_acs.button",
+              "custom_components.hikvision_acs.sensor",
+              "custom_components.hikvision_acs.camera",
+          ]
+
+          failed = []
+          for name in modules:
+              try:
+                  importlib.import_module(name)
+              except BaseException as err:            # noqa: BLE001
+                  failed.append(name)
+                  print(f"❌ {name}\n   {type(err).__name__}: {err}")
+                  traceback.print_exc()
+              else:
+                  print(f"✅ {name}")
+
+          if failed:
+              print(f"\n{len(failed)}/{len(modules)} 个模块导入失败。")
+              print("这类错误在 HA 里的表现通常是「无法加载配置向导 / "
+                    "Invalid handler specified」，用户完全看不出根因在这里。")
+              sys.exit(1)
+          print(f"\n全部 {len(modules)} 个模块导入成功。")
+          PY

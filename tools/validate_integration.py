@@ -210,7 +210,20 @@ def test_structure() -> None:
             check(False, "manifest 前两个键应为 domain、name", f"实际 {keys[:2]}")
 
     hacs = json.loads((ROOT / "hacs.json").read_text(encoding="utf-8"))
-    check("name" in hacs and "homeassistant" in hacs, "hacs.json 含 name / homeassistant")
+    check("name" in hacs, "hacs.json 含 name（HACS 唯一必填项）")
+
+    # hacs.json 只允许文档列出的键，多一个就会被 HACS 判为 invalid。
+    # 这条是 HACS Action 在 CI 上抓出来的：我原先放了 render_readme，
+    # 而它根本不在支持列表里。加在本地就不用再等一轮 CI 才发现。
+    allowed = {"name", "content_in_root", "zip_release", "filename",
+               "hide_default_branch", "country", "homeassistant", "hacs",
+               "persistent_directory"}
+    unknown = sorted(set(hacs) - allowed)
+    check(not unknown, "hacs.json 只含 HACS 支持的键",
+          f"不支持的键：{unknown}（支持：{sorted(allowed)}）")
+
+    check((COMPONENT / "brand" / "icon.png").is_file(),
+          "提供品牌图标 custom_components/<domain>/brand/icon.png（HACS 必需）")
 
     # 必需的模块
     for name in ("__init__.py", "config_flow.py", "const.py", "coordinator.py",

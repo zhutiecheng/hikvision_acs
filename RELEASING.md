@@ -23,6 +23,19 @@ python3 tools/set_repo.py <你的用户名>/<仓库名>             # 确认后�
 
 改完跑一遍 `python3 tools/validate_integration.py`。
 
+## 1.5 换成你自己的品牌图标（建议）
+
+HACS 校验要求集成自带品牌图标，仓库里已有占位图标
+`custom_components/hikvision_acs/brand/icon.png`（红底白门，由
+`tools/make_icon.py` 生成）。
+
+要换成自己的 logo，**直接替换这个文件**即可（建议 256 或 512 见方 PNG）；
+想调整配色也可以改脚本参数：
+
+```bash
+python3 tools/make_icon.py --color "#1F6FEB" --size 512
+```
+
 ## 2. 确认许可证
 
 仓库里放的是 **MIT**（`LICENSE`）。这是 HACS 集成的常见选择，但**这是你的商业决定**：

@@ -212,12 +212,15 @@ def test_structure() -> None:
     hacs = json.loads((ROOT / "hacs.json").read_text(encoding="utf-8"))
     check("name" in hacs, "hacs.json 含 name（HACS 唯一必填项）")
 
-    # hacs.json 只允许文档列出的键，多一个就会被 HACS 判为 invalid。
-    # 这条是 HACS Action 在 CI 上抓出来的：我原先放了 render_readme，
-    # 而它根本不在支持列表里。加在本地就不用再等一轮 CI 才发现。
-    allowed = {"name", "content_in_root", "zip_release", "filename",
-               "hide_default_branch", "country", "homeassistant", "hacs",
-               "persistent_directory"}
+    # hacs.json 的合法键。
+    #
+    # 来源是 HACS 的真实 schema（custom_components/hacs/utils/validate.py 里的
+    # HACS_MANIFEST_JSON_SCHEMA，extra=vol.PREVENT_EXTRA 即多余键会被拒），
+    # **不是**文档页的表格——文档漏了 render_readme，我照文档做了一版过严的
+    # 护栏，反而会把合法键判成非法。
+    allowed = {"name", "content_in_root", "country", "filename", "hacs",
+               "hide_default_branch", "homeassistant", "persistent_directory",
+               "render_readme", "zip_release"}
     unknown = sorted(set(hacs) - allowed)
     check(not unknown, "hacs.json 只含 HACS 支持的键",
           f"不支持的键：{unknown}（支持：{sorted(allowed)}）")

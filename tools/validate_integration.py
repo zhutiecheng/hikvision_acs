@@ -440,6 +440,31 @@ def test_single_source_of_truth(ec) -> None:
               f"缺少 {sorted(missing)}" if missing else "")
 
 
+def test_tools_importable() -> None:
+    """
+    每个 tools/*.py 都必须能被导入。
+
+    这条检查补一个真实的漏：correlate.py 还在 import 重构时删掉的 EVENT_CODES，
+    发布到 v0.1.0 后现场一跑就 ImportError。校验器当时只加载了 acs_probe.py，
+    从没碰过 correlate.py，所以完全没拦住。
+
+    工具脚本都受 if __name__ == "__main__" 保护，导入无副作用。
+    """
+    section("7. 工具脚本可导入")
+
+    for path in sorted((ROOT / "tools").glob("*.py")):
+        name = f"acs_tool_{path.stem}"
+        try:
+            spec = importlib.util.spec_from_file_location(name, path)
+            module = importlib.util.module_from_spec(spec)
+            sys.modules[name] = module
+            spec.loader.exec_module(module)
+        except BaseException as err:                        # noqa: BLE001
+            check(False, f"{path.name} 可导入", f"{type(err).__name__}: {err}")
+        else:
+            check(True, f"{path.name} 可导入")
+
+
 def main() -> int:
     print("海康门禁 HA 集成 —— 离线校验")
     print(f"目标目录：{COMPONENT}")
@@ -452,6 +477,7 @@ def main() -> int:
     test_undefined_names()
     test_yaml()
     test_single_source_of_truth(ec)
+    test_tools_importable()
 
     section("结果")
     if failures:

@@ -24,7 +24,7 @@ from datetime import datetime, timedelta
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
-from acs_probe import Device, EVENT_CODES, SUB_EVENT_HINTS, die  # noqa: E402
+from acs_probe import Device, code_label, is_known, die  # noqa: E402
 
 CST = "+08:00"
 
@@ -34,13 +34,8 @@ WATCH_FIELDS = ("remoteHostAddr", "netUser", "doorNo", "cardReaderKind",
 
 
 def describe(major: int, minor: int) -> str:
-    name = EVENT_CODES.get((major, minor))
-    if name:
-        return name
-    hint = SUB_EVENT_HINTS.get(minor)
-    if hint:
-        return f"{hint}（按 minor 推断，未经确认）"
-    return "未确认语义"
+    """事件码名称。语义确认与否由 code_label 统一标注，这里不再自己维护表。"""
+    return code_label(major, minor)
 
 
 def query(dev: Device, payload: dict) -> tuple[int, str]:

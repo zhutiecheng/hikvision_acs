@@ -6,9 +6,10 @@ name: 集成导入测试
 # 所以一个 `from aiohttp import DigestAuth`（aiohttp 根本不导出这个名字）
 # 能一路绿着通过所有校验，直到用户在 HA 里点「添加集成」才炸，
 # 报的还是 "Invalid handler specified" —— 一个完全指不到根因的错误。
+# 这个坑真实发生过，所以有了这个工作流。
 #
-# 这个工作流真的装上 Home Assistant，然后导入集成里的每一个模块。
-# 它拦不住运行时逻辑错误，但能拦住所有 import 层面的错误。
+# 它真的装上 Home Assistant，然后导入集成里的每一个模块。
+# 拦不住运行时逻辑错误，但能拦住所有 import 层面的错误。
 
 on:
   push:
@@ -28,19 +29,43 @@ jobs:
         with:
           python-version: "3.13"
 
-      - name: 安装 Home Assistant（提供真实的运行环境与依赖）
+      - name: 安装 Home Assistant
         run: |
           python -m pip install --upgrade pip
           python -m pip install --upgrade homeassistant
 
-          # 裸 pip install homeassistant 不会装组件级的依赖——HA 是在组件
-          # 初始化时按 manifest 里的 requirements 现装的。而 camera 组件依赖
-          # stream 组件，stream/core.py 在**模块级** import numpy，所以导入
-          # camera 平台时就会炸。这里按 HA 的做法把这几个补上。
-          #
-          # 曾经把这个 ModuleNotFoundError 误判成代码 bug，其实是环境缺口：
-          # homeassistant/components/stream/manifest.json 里写着 numpy==2.3.2。
-          python -m pip install numpy
+      - name: 按 HA 组件 manifest 安装依赖
+        # 裸 pip install homeassistant 不装组件级依赖——HA 是在组件初始化时按
+        # manifest 里的 requirements 现装的。而 camera 组件依赖 stream，
+        # stream/core.py 在**模块级** import numpy，camera 自身又要 turbojpeg，
+        # 所以导入 camera 平台时会炸（曾把这个环境缺口误判成代码 bug）。
+        #
+        # 这里直接读 HA 自己的 manifest 来装，而不是硬编码包名——
+        # HA 以后增删依赖，这里自动跟上。
+        run: |
+          python - <<'PY'
+          import json, pathlib, subprocess, sys
+
+          import homeassistant
+
+          components = pathlib.Path(homeassistant.__file__).parent / "components"
+          wanted = ["camera", "stream", "web_rtc", "http", "webhook"]
+
+          reqs: set[str] = set()
+          for name in wanted:
+              manifest = components / name / "manifest.json"
+              if not manifest.is_file():
+                  continue
+              data = json.loads(manifest.read_text())
+              reqs.update(data.get("requirements") or [])
+              print(f"{name}: deps={data.get('dependencies')} reqs={data.get('requirements')}")
+
+          if not reqs:
+              print("没有解析到组件依赖，跳过")
+              sys.exit(0)
+          print("将安装：", sorted(reqs))
+          subprocess.check_call([sys.executable, "-m", "pip", "install", *sorted(reqs)])
+          PY
 
       - name: 逐个导入集成模块
         run: |
@@ -48,7 +73,6 @@ jobs:
           import importlib, pathlib, shutil, sys, traceback
 
           root = pathlib.Path.cwd()
-          # 模拟 HA 的 config 目录布局
           cfg = root / ".ci-config"
           dest = cfg / "custom_components" / "hikvision_acs"
           dest.parent.mkdir(parents=True, exist_ok=True)
@@ -56,13 +80,18 @@ jobs:
                           dirs_exist_ok=True)
           sys.path.insert(0, str(cfg))
 
-          modules = [
+          # 前一组在「添加集成」这条路径上：任一导入失败，用户在 HA 里看到的
+          # 就是「无法加载配置向导 / Invalid handler specified」。
+          critical = [
               "custom_components.hikvision_acs",
               "custom_components.hikvision_acs.config_flow",
               "custom_components.hikvision_acs.const",
               "custom_components.hikvision_acs.coordinator",
               "custom_components.hikvision_acs.isapi",
               "custom_components.hikvision_acs.eventcodes",
+          ]
+          # 后一组是各平台实体，在平台建立时加载。
+          platforms = [
               "custom_components.hikvision_acs.entity",
               "custom_components.hikvision_acs.event",
               "custom_components.hikvision_acs.binary_sensor",
@@ -72,20 +101,23 @@ jobs:
           ]
 
           failed = []
-          for name in modules:
-              try:
-                  importlib.import_module(name)
-              except BaseException as err:            # noqa: BLE001
-                  failed.append(name)
-                  print(f"❌ {name}\n   {type(err).__name__}: {err}")
-                  traceback.print_exc()
-              else:
-                  print(f"✅ {name}")
+          for group, names in (("配置向导路径", critical), ("实体平台", platforms)):
+              print(f"\n--- {group} ---")
+              for name in names:
+                  try:
+                      importlib.import_module(name)
+                  except BaseException as err:        # noqa: BLE001
+                      failed.append(name)
+                      print(f"导入失败 {name}\n   {type(err).__name__}: {err}")
+                      traceback.print_exc()
+                  else:
+                      print(f"OK   {name}")
 
           if failed:
-              print(f"\n{len(failed)}/{len(modules)} 个模块导入失败。")
-              print("这类错误在 HA 里的表现通常是「无法加载配置向导 / "
-                    "Invalid handler specified」，用户完全看不出根因在这里。")
+              print(f"\n{len(failed)} 个模块导入失败：{failed}")
+              print("配置向导路径上的模块导入失败，在 HA 里的表现就是")
+              print("「无法加载配置向导 / Invalid handler specified」——")
+              print("用户完全看不出根因在这里，所以必须在这里拦住。")
               sys.exit(1)
-          print(f"\n全部 {len(modules)} 个模块导入成功。")
+          print(f"\n全部 {len(critical) + len(platforms)} 个模块导入成功。")
           PY

@@ -21,8 +21,10 @@ acs_probe.py — 海康门禁（DS-K1T341BM 等）ISAPI 探测与真实事件采
 from __future__ import annotations
 
 import argparse
+import importlib.util
 import json
 import os
+import pathlib
 import re
 import subprocess
 import sys
@@ -36,52 +38,45 @@ try:
 except ImportError:
     sys.exit("缺少依赖：pip3 install requests")
 
-# Hikvision 官方事件码表（Access Control Event Types 附录）中的关键项。
-# 标记 assumed 的条目必须用真机采样确认后再用于业务判断。
-SUB_EVENT_HINTS: dict[int, str] = {
-    1: "合法卡刷卡",
-    21: "门锁打开",
-    22: "门锁关闭",
-    23: "开门按钮按下",
-    24: "开门按钮松开",
-    25: "门开(门磁)",
-    26: "门关(门磁)",
-    27: "门异常打开",
-    28: "门开超时",
-    37: "门铃响",
-    38: "指纹比对通过",
-    39: "指纹比对失败",
-    51: "呼叫中心",
-    75: "人脸认证通过",
-    76: "人脸认证失败(推断)",
-    151: "密码错误",
-    133: "尾随",
-    134: "反向通行",
-    135: "强行闯入",
-    1024: "远程开门",
-    1025: "远程关门",
-    1026: "远程常开",
-    1027: "远程常闭",
-}
-
-# 在真机 DS-K1T341BM / 固件 V3.7.80 上实测确认的 (major, minor) → 含义。
+# ---------------------------------------------------------------------------
+# 事件码表
 #
-# 为什么必须用 (major, minor) 二元组而不是单看 minor：
-#   实测发现 minor 相同、major 不同时含义完全不同（例如 1024 在 major=5 下是"远程开门"，
-#   在本机实测的 major=2 下却是另一类事件）。只按 minor 查表会误判。
-EVENT_CODES: dict[tuple[int, int], str] = {
-    (5, 21): "门锁打开",
-    (5, 22): "门锁关闭",
-    (5, 23): "开门按钮按下",
-    (5, 24): "开门按钮松开",
-    (5, 37): "门铃响(待本机确认)",
-    (5, 75): "人脸认证通过(带身份+抓拍图)",
-    (5, 76): "人脸认证失败(待确认)",
-    # 以下三条由本机实测采到，用途尚未确认，不要臆测后写进业务逻辑
-    (2, 1024): "【未确认】异常类，实测总在门锁关闭后紧邻出现",
-    (1, 1028): "【未确认】报警类，实测总在门锁关闭后 1 秒出现",
-    (3, 240): "【未确认】操作类",
-}
+# 唯一来源是 HA 集成里的 custom_components/hikvision_acs/eventcodes.py。
+# 那个模块刻意不依赖 Home Assistant，可以独立加载，因此本工具直接用它——
+# 避免出现"同一张表在仓库里存三份、改一份漏两份"的情况（这真的发生过：
+# (3,1024) 已在真机确认，但探针里仍是旧表，把远程开门标成了"未确认"）。
+# ---------------------------------------------------------------------------
+
+_COMPONENT_DIR = pathlib.Path(__file__).resolve().parent.parent / "custom_components" / "hikvision_acs"
+
+
+def _load_eventcodes():
+    if not (_COMPONENT_DIR / "eventcodes.py").is_file():
+        raise SystemExit(
+            f"找不到事件码表：{_COMPONENT_DIR / 'eventcodes.py'}\n"
+            "（本工具依赖仓库完整布局，不能单独拷出来用）")
+    spec = importlib.util.spec_from_file_location(
+        "acs_eventcodes", _COMPONENT_DIR / "eventcodes.py")
+    module = importlib.util.module_from_spec(spec)
+    sys.modules["acs_eventcodes"] = module
+    spec.loader.exec_module(module)
+    return module
+
+
+EC = _load_eventcodes()
+
+# 保留旧名字，避免所有调用点都要改
+SUB_EVENT_HINTS: dict[int, str] = {}
+
+
+def code_label(major: int, minor: int) -> str:
+    """(major, minor) → 人类可读名称，并标出语义是否已实测确认。"""
+    name, verified = EC.describe(major, minor)
+    return name if verified else f"{name}〔未实测确认〕"
+
+
+def is_known(major: int, minor: int) -> bool:
+    return (major, minor) in EC.ALL_CODES
 
 
 def die(msg: str) -> None:
@@ -231,7 +226,7 @@ def describe_event(obj: dict) -> str:
         major = ace.get("majorEventType")
         minor = ace.get("subEventType")
         who = ace.get("name") or ace.get("employeeNoString") or ace.get("cardNo") or "(无身份信息)"
-        hint = EVENT_CODES.get((major, minor)) or SUB_EVENT_HINTS.get(minor, "未知事件码")
+        hint = code_label(major, minor)
         live = "实时" if ace.get("currentEvent") else "历史"
         return (f"[{live}] {ts} | major={major} minor={minor} ({hint}) "
                 f"| 人={who} | door={ace.get('doorNo')} "
@@ -386,8 +381,8 @@ def cmd_sniff(dev: Device, args) -> None:
         key = (ace.get("majorEventType"), ace.get("subEventType"))
         seen[key] = seen.get(key, 0) + 1
     for (major, minor), cnt in sorted(seen.items(), key=lambda kv: (kv[0][0], kv[0][1])):
-        hint = EVENT_CODES.get((major, minor)) or SUB_EVENT_HINTS.get(minor, "未知")
-        flag = "" if (major, minor) in EVENT_CODES else "   <<< 新码，需确认含义"
+        hint = code_label(major, minor)
+        flag = "" if is_known(major, minor) else "   <<< 新码，需确认含义"
         print(f"  major={major:<4} minor={minor:<6} 出现 {cnt:>3} 次   {hint}{flag}")
 
 
@@ -467,7 +462,7 @@ def cmd_history(dev: Device, args) -> None:
     for info in acs.get("InfoList", []) or []:
         major = info.get("major")
         minor = info.get("minor")
-        hint = SUB_EVENT_HINTS.get(minor, "未知")
+        hint = code_label(major, minor)
         print(f"  {info.get('time')} | major={major} minor={minor} ({hint}) "
               f"| 人={info.get('name') or info.get('employeeNoString') or '-'} "
               f"| card={info.get('cardNo') or '-'} "

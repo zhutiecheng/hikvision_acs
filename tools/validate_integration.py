@@ -325,6 +325,76 @@ def test_yaml() -> None:
             check(False, f"{path.name} YAML 合法", str(err)[:200])
 
 
+def test_single_source_of_truth(ec) -> None:
+    """
+    事件码表在仓库里只允许有一份。
+
+    这条检查是因为真的踩过：表原先是三份拷贝（调试探针、独立网关、HA 集成），
+    更新集成时漏了另外两份，于是 (3,1024) 在探针里被标成"未确认"——客户现场
+    会看到错误的事件名。
+    """
+    section("6. 事件码表单一来源")
+
+    consumers = {
+        "调试探针": ROOT / "tools" / "acs_probe.py",
+        "独立网关": ROOT / "standalone" / "gateway" / "eventcodes.py",
+    }
+    for label, path in consumers.items():
+        check(path.is_file(), f"{label} 存在")
+        if not path.is_file():
+            continue
+        src = path.read_text(encoding="utf-8")
+        check("custom_components" in src and "eventcodes.py" in src,
+              f"{label} 从集成加载事件码表（不自己维护一份）")
+        literal_table = re.search(r'\(\s*\d+\s*,\s*\d+\s*\)\s*:\s*"', src)
+        check(literal_table is None,
+              f"{label} 没有内嵌事件码字面表",
+              f"在偏移 {literal_table.start()} 处发现疑似内嵌表"
+              if literal_table else "")
+
+    # 行为层面再确认一次：三者对关键码的判断必须一致
+    def load(path, name):
+        spec = importlib.util.spec_from_file_location(name, path)
+        module = importlib.util.module_from_spec(spec)
+        sys.modules[name] = module
+        spec.loader.exec_module(module)
+        return module
+
+    probe = load(ROOT / "tools" / "acs_probe.py", "acs_probe_check")
+    gateway = load(ROOT / "standalone" / "gateway" / "eventcodes.py", "acs_gw_check")
+
+    for major, minor in [(3, 1024), (5, 37), (5, 75), (5, 21), (3, 112)]:
+        expected = ec.describe(major, minor)
+
+        probe_got = probe.EC.describe(major, minor)
+        check(probe_got == expected,
+              f"探针与集成对 ({major},{minor}) 判断一致",
+              f"探针={probe_got} 集成={expected}")
+
+        gw_got = gateway.describe(major, minor)
+        check(gw_got == expected,
+              f"独立网关与集成对 ({major},{minor}) 判断一致",
+              f"网关={gw_got} 集成={expected}")
+
+    # 适配层必须给出 store/server 约定的键，否则独立网关运行时会 KeyError
+    rec = gateway.normalize({
+        "dateTime": "2026-10-06T17:23:06+08:00",
+        "eventType": "AccessControllerEvent",
+        "AccessControllerEvent": {
+            "majorEventType": 5, "subEventType": 75,
+            "employeeNoString": "1", "doorNo": 1, "currentEvent": True, "serialNo": 20,
+        },
+    })
+    need = {"serialNo", "frontSerialNo", "time", "live", "major", "minor", "majorName",
+            "eventName", "codeVerified", "declared", "method", "actorKind", "person",
+            "personName", "cardNo", "doorNo", "remoteHost", "netUser",
+            "configuredVerifyMode", "hasPicture"}
+    missing = need - set(rec or {})
+    check(rec is not None and not missing,
+          "独立网关的 normalize 输出键与 store/server 约定一致",
+          f"缺少 {sorted(missing)}" if missing else "")
+
+
 def main() -> int:
     print("海康门禁 HA 集成 —— 离线校验")
     print(f"目标目录：{COMPONENT}")
@@ -336,6 +406,7 @@ def main() -> int:
     test_translations()
     test_undefined_names()
     test_yaml()
+    test_single_source_of_truth(ec)
 
     section("结果")
     if failures:

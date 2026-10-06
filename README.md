@@ -124,9 +124,16 @@ go2rtc/WebRTC 相关加载项，让摄像头的流走 WebRTC（实测抓单帧�
 ## 给集成开发者的说明
 
 ```bash
-python3 tools/validate_integration.py     # 离线校验，155 项，可当 CI 门禁
+python3 tools/validate_integration.py     # 离线校验，172 项，可当 CI 门禁
 python3 tools/acs_probe.py --help         # 现场调试：探测设备、采样真实事件
+python3 tools/correlate.py --help         # 事件时间轴对照：把「某个操作」和「某些事件码」对应起来
+python3 tools/set_repo.py --help          # 发布前设置仓库坐标
 ```
+
+**事件码表在仓库里只有一份**（`custom_components/hikvision_acs/eventcodes.py`），
+调试探针和独立网关都从它加载。校验器里有一条专门的检查防止表再次分叉——
+这不是洁癖：表原先有三份拷贝，更新一份漏掉两份，结果探针把已确认的 `(3,1024)`
+远程开门标成了"未确认"，客户现场会看到错误的事件名。
 
 HA 跑在另一台主机上时，开发机装不了 HA Core，所以校验分三层：纯逻辑单测
 （`eventcodes.py` 不依赖 HA，事件码映射和 `currentVerifyMode` 陷阱全部实测覆盖）、

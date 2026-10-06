@@ -38,3 +38,6 @@ Thumbs.db
 *.swp
 *.swo
 *~
+
+# 本地凭据（GitHub token 等）—— 绝不提交
+.secrets/

@@ -1,10 +1,10 @@
 {
   "domain": "hikvision_acs",
   "name": "海康威视门禁",
-  "codeowners": ["@hikvision-acs"],
+  "codeowners": ["@zhutiecheng"],
   "config_flow": true,
-  "documentation": "https://github.com/hikvision-acs/hikvision_acs",
-  "issue_tracker": "https://github.com/hikvision-acs/hikvision_acs/issues",
+  "documentation": "https://github.com/zhutiecheng/hikvision_acs",
+  "issue_tracker": "https://github.com/zhutiecheng/hikvision_acs/issues",
   "integration_type": "hub",
   "iot_class": "local_push",
   "dependencies": ["webhook"],

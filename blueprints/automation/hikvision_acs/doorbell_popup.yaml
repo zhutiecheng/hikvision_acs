@@ -7,7 +7,7 @@ blueprint:
     之所以用「开关 + 延时」而不是直接弹窗：这样不需要额外安装任何前端插件，
     任何 HA 仪表盘（平板、大屏、手机）都能用。
   domain: automation
-  source_url: https://github.com/hikvision-acs/hikvision_acs/blob/main/blueprints/automation/hikvision_acs/doorbell_popup.yaml
+  source_url: https://github.com/zhutiecheng/hikvision_acs/blob/main/blueprints/automation/hikvision_acs/doorbell_popup.yaml
   input:
     doorbell_event:
       name: 门禁事件实体

@@ -65,4 +65,4 @@
 
 刷卡 / 指纹类事件码来自公开文档，测试机上无卡无法现场验证，接入真实卡后需复核。
 
-[0.1.0]: https://github.com/hikvision-acs/hikvision_acs/releases/tag/v0.1.0
+[0.1.0]: https://github.com/zhutiecheng/hikvision_acs/releases/tag/v0.1.0

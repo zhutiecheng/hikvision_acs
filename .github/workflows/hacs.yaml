@@ -1,0 +1,24 @@
+name: HACS 校验
+
+# HACS 官方校验动作。检查仓库是否满足 HACS 的集成收录要求：
+# hacs.json、custom_components/<domain>/manifest.json 的必填字段、
+# documentation / issue_tracker 地址等。
+
+on:
+  push:
+  pull_request:
+  schedule:
+    - cron: "0 3 * * 1"
+  workflow_dispatch:
+
+jobs:
+  hacs:
+    name: HACS
+    runs-on: ubuntu-latest
+    steps:
+      - name: 检出仓库
+        uses: actions/checkout@v4
+      - name: 运行 HACS 校验
+        uses: hacs/action@main
+        with:
+          category: integration

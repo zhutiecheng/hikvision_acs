@@ -1,0 +1,23 @@
+name: hassfest（Home Assistant 官方校验）
+
+# Home Assistant 官方的集成校验器。它会检查 manifest.json 的必填字段、
+# 翻译文件的结构、目录布局、依赖声明等——这些在开发机上装不了 HA Core
+# 时无法本地验证，交给它来把关。
+
+on:
+  push:
+  pull_request:
+  schedule:
+    # 每周一跑一次，捕捉上游 HA 规则变化
+    - cron: "0 3 * * 1"
+  workflow_dispatch:
+
+jobs:
+  hassfest:
+    name: hassfest
+    runs-on: ubuntu-latest
+    steps:
+      - name: 检出仓库
+        uses: actions/checkout@v4
+      - name: 运行 hassfest
+        uses: home-assistant/actions/hassfest@master

@@ -1,0 +1,32 @@
+name: 离线校验
+
+# 本仓库自带的校验脚本：纯逻辑单测（事件码映射、currentVerifyMode 陷阱、
+# JSON/XML 双格式解析）+ 结构校验（manifest / 翻译键覆盖 / 平台齐备性）
+# + 静态分析（未定义名字、未使用导入）。
+#
+# 其中「事件码表里的每个码都必须在设备自述的可上报范围内」这一项，
+# 曾经抓到过把「远程关门」误登记为 (5,1025) 的真实错误。
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  validate:
+    name: validate_integration.py
+    runs-on: ubuntu-latest
+    steps:
+      - name: 检出仓库
+        uses: actions/checkout@v4
+
+      - name: 安装 Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: 安装校验脚本的依赖
+        run: python -m pip install --upgrade pyyaml
+
+      - name: 运行离线校验
+        run: python tools/validate_integration.py
